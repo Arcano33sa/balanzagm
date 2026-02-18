@@ -1,10 +1,11 @@
-/* BALANZA GM — SW v0.1.0 Etapa 2 */
-const CACHE_NAME = 'balanzagm-v0.1.0-etapa2';
+/* BALANZA GM — SW v1.0.0 Etapa 10 */
+const CACHE_NAME = 'balanzagm-v1.0.0-etapa10-cierre-excel-historico';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './js/firebaseConfig.js',
   './manifest.webmanifest',
   './assets/escudo/escudo.png',
   './assets/icons/icon-192.png',

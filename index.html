@@ -8,6 +8,15 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="assets/icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Firebase (CDN, sin build)
+       1) Pega tu firebaseConfig en: /js/firebaseConfig.js
+       2) Habilita Auth (Google) + Firestore en tu proyecto Firebase
+  -->
+  <script src="js/firebaseConfig.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
   <header class="app-header">
@@ -35,6 +44,8 @@
 
     <section id="view" class="view" aria-live="polite"></section>
   </main>
+  <!-- SheetJS (XLSX) via CDN, sin build -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script src="app.js"></script>
 </body>
