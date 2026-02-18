@@ -99,6 +99,9 @@ historico: { items: [], loading: false, unsub: null },
 // Etapa 10: Google OAuth token (Calendar)
 google: { accessToken: null, expiresAt: 0 },
 
+// Diagnóstico Auth
+lastAuth: null,
+
 busy: false,
 
 };
@@ -564,6 +567,23 @@ async function refreshUserContext(){
   }
 }
 
+function setLastAuthError(err, phase){
+  try{
+    const code = err && (err.code || err.error || err.name) ? String(err.code || err.error || err.name) : 'unknown';
+    const msg = err && err.message ? String(err.message) : '';
+    STATE.lastAuth = {
+      phase: String(phase || 'auth'),
+      code,
+      message: msg,
+      origin: (typeof location !== 'undefined') ? location.origin : '',
+      href: (typeof location !== 'undefined') ? location.href : '',
+      at: Date.now(),
+    };
+  } catch(_){
+    STATE.lastAuth = { phase: String(phase||'auth'), code: 'unknown', message: '', origin: '', href: '', at: Date.now() };
+  }
+}
+
 async function signInGoogle(){
   if(!STATE.fbOk || !FB.auth) return;
   try{
@@ -571,7 +591,9 @@ async function signInGoogle(){
     await FB.auth.signInWithRedirect(FB.provider);
   } catch(err){
     console.error(err);
-    toast('No se pudo iniciar sesión.');
+    setLastAuthError(err, 'signInWithRedirect');
+    toast(`No se pudo iniciar sesión (${STATE.lastAuth && STATE.lastAuth.code ? STATE.lastAuth.code : 'unknown'}).`);
+    render();
   }
 }
 
@@ -864,7 +886,7 @@ async function loadFamilyMembers({ force } = {}){
       famRef.set({
         members,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true }).catch(()=>{});
+      }, { merge: true }).catch((err)=>{ console.error(err); setLastAuthError(err, 'getRedirectResult'); render(); });
     }
 
     return members;
@@ -3286,6 +3308,28 @@ function renderAccessView(){
         : 'Firebase no disponible (SDK/INIT). Revisa conexión o versión de CDN.')
     : null;
 
+  const origin = (typeof location !== 'undefined') ? location.origin : '';
+  const host = (typeof location !== 'undefined') ? location.host : '';
+  const proto = (typeof location !== 'undefined') ? location.protocol : '';
+  const isPWA = !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || !!window.navigator.standalone;
+  const last = STATE.lastAuth;
+  const diagHtml = STATE.fbOk ? `
+    <details class="diag" ${last ? 'open' : ''}>
+      <summary>DIAGNÓSTICO</summary>
+      <div class="diag-body">
+        <div><b>ORIGEN:</b> <span class="mono">${escapeHtml(origin || '')}</span></div>
+        <div><b>HOST:</b> <span class="mono">${escapeHtml(host || '')}</span> • <b>PROTO:</b> <span class="mono">${escapeHtml(proto || '')}</span> • <b>PWA:</b> <span class="mono">${isPWA ? 'SI' : 'NO'}</span></div>
+        <div class="hint">Este <b>HOST</b> debe estar en Firebase → Autenticación → Configuración → Dominios autorizados.</div>
+        ${last ? `
+          <div class="diag-err">
+            <div><b>Último error:</b> <span class="mono">${escapeHtml(last.code || 'unknown')}</span></div>
+            <div class="hint">Fase: <span class="mono">${escapeHtml(last.phase || '')}</span> • ${new Date(last.at || Date.now()).toLocaleString()}</div>
+          </div>
+        ` : `<div class="hint">Aún sin errores registrados.</div>`}
+      </div>
+    </details>
+  ` : '';
+
   const u = STATE.user;
   const userHtml = u ? `
     <div class="user-box">
@@ -3306,6 +3350,7 @@ function renderAccessView(){
     <div class="access-wrap">
       <h2>ACCESO</h2>
       ${fbStatus ? `<div class="notice">${escapeHtml(fbStatus)}</div>` : ''}
+      ${diagHtml}
 
       ${userHtml}
 

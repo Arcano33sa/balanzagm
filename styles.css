@@ -894,3 +894,10 @@ body{
 .toggle-row{ display:flex; align-items:center; gap: 10px; cursor:pointer; user-select:none; }
 .toggle-row input{ width: 18px; height: 18px; }
 .toggle-text{ font-weight: 950; letter-spacing: .10em; font-size: 12px; }
+
+
+/* Diagnóstico Auth */
+.diag{ margin-top: 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; background: rgba(255,255,255,.03); padding: 10px 12px; }
+.diag summary{ cursor:pointer; font-weight: 950; letter-spacing: .10em; font-size: 12px; color: var(--text); }
+.diag-body{ padding-top: 8px; font-size: 13px; }
+.diag-err{ margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.10); }
