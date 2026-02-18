@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d12" />
+  <title>BALANZA GM</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="assets/icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand" role="banner" aria-label="Marca">
+        <div class="brand-crest">
+          <img id="crestImg" src="assets/escudo/escudo.png" alt="Escudo" />
+        </div>
+        <div class="brand-title">BALANZA GM</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section class="hero-wrap" aria-label="Hero">
+      <div class="hero-frame" id="heroFrame">
+        <img id="heroImg" alt="" />
+        <div id="heroFallback" class="hero-fallback" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Pestañas">
+      <div id="tabsRow" class="tabs-row"></div>
+    </nav>
+
+    <section id="view" class="view" aria-live="polite"></section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
