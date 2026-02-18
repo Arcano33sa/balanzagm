@@ -13,11 +13,11 @@
 */
 
 window.BGM_FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyBFG-0hti-a-76nDZAqep5Q7lXLfYjsHIA",
+  authDomain: "balanzagm.firebaseapp.com",
+  projectId: "balanzagm",
+  storageBucket: "balanzagm.firebasestorage.app",
+  messagingSenderId: "978865503475",
+  appId: "1:978865503475:web:36b480711efd45625a4b86",
   // measurementId: "" // opcional
 };
