@@ -3651,30 +3651,39 @@ els.crestImg.addEventListener('error', () => {
   }).catch(()=>{});
 
   // 4) Observa sesión
-  FB.auth.onAuthStateChanged(async (user) => {
+  FB.auth.onAuthStateChanged((user) => {
     STATE.user = user || null;
     STATE.authReady = true;
 
-    try{
-      if(user){
-        loadCalendarEnabled(user.uid);
-        await ensureUserDoc(user);
-        await refreshUserContext();
-        if(STATE.google.calendarEnabled) loadGoogleOAuthToken(user.uid);
-        else { STATE.google.accessToken = null; STATE.google.expiresAt = 0; }
-      } else {
-        STATE.familiaId = null;
-        STATE.familia = null;
-        STATE.role = '—';
-        STATE.google.accessToken = null;
-        STATE.google.expiresAt = 0;
-        STATE.google.calendarEnabled = false;
-      }
-    } catch(err){
-      console.error(err);
-    }
-
+    // Render inmediato: evita quedarse pegado en “CARGANDO…” si Firestore tarda, está offline o aún no está creado.
     render();
+
+    // Carga contexto en segundo plano (sin bloquear UI)
+    Promise.resolve().then(async () => {
+      try{
+        if(user){
+          loadCalendarEnabled(user.uid);
+
+          // Estas operaciones pueden tardar o fallar (Firestore / red). No bloqueamos la UI.
+          try{ await ensureUserDoc(user); } catch(e){ console.error(e); }
+          try{ await refreshUserContext(); } catch(e){ console.error(e); }
+
+          if(STATE.google.calendarEnabled) loadGoogleOAuthToken(user.uid);
+          else { STATE.google.accessToken = null; STATE.google.expiresAt = 0; }
+        } else {
+          STATE.familiaId = null;
+          STATE.familia = null;
+          STATE.role = '—';
+          STATE.google.accessToken = null;
+          STATE.google.expiresAt = 0;
+          STATE.google.calendarEnabled = false;
+        }
+      } catch(err){
+        console.error(err);
+      }
+    }).finally(() => {
+      render();
+    });
   });
 })();
 
