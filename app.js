@@ -596,12 +596,29 @@ function setLastAuthError(err, phase){
 async function signInGoogle(){
   if(!STATE.fbOk || !FB.auth) return;
   try{
-    // Redirect es más estable en iPad/PWA.
+    // Popup primero (mejor en desktop). Fallback a redirect (mejor en iPad/PWA o si popup se bloquea).
     try{ localStorage.setItem(STORAGE.GOOGLE_INTENT, 'login'); } catch(_){ /* ignore */ }
+
+    if(FB.auth.signInWithPopup){
+      try{
+        await FB.auth.signInWithPopup(FB.providerBase);
+        try{ localStorage.removeItem(STORAGE.GOOGLE_INTENT); } catch(_){ /* ignore */ }
+        return;
+      } catch(errPop){
+        const code = (errPop && errPop.code) ? String(errPop.code) : '';
+        // Si el popup fue bloqueado/no soportado, intentamos redirect.
+        if(['auth/popup-blocked','auth/popup-closed-by-user','auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment'].includes(code)){
+          // sigue a redirect
+        } else {
+          throw errPop;
+        }
+      }
+    }
+
     await FB.auth.signInWithRedirect(FB.providerBase);
   } catch(err){
     console.error(err);
-    setLastAuthError(err, 'signInWithRedirect');
+    setLastAuthError(err, 'signIn');
     toast(`No se pudo iniciar sesión (${STATE.lastAuth && STATE.lastAuth.code ? STATE.lastAuth.code : 'unknown'}).`);
     render();
   }
@@ -611,8 +628,36 @@ async function connectCalendarPro(){
   if(!STATE.fbOk || !FB.auth) return;
   try{
     // Esto pedirá el scope sensible de Calendar: puede mostrar “Google no ha verificado…”.
-    // Es normal mientras el proyecto esté en modo pruebas o sin verificación.
+    // Popup primero (mejor en desktop). Fallback a redirect (mejor en iPad/PWA o si popup se bloquea).
     try{ localStorage.setItem(STORAGE.GOOGLE_INTENT, 'calendar'); } catch(_){ /* ignore */ }
+
+    if(FB.auth.signInWithPopup){
+      try{
+        const res = await FB.auth.signInWithPopup(FB.providerCalendar);
+        // Captura token OAuth para Calendar PRO
+        try{ localStorage.removeItem(STORAGE.GOOGLE_INTENT); } catch(_){ /* ignore */ }
+        try{
+          const token = (res && res.credential && res.credential.accessToken) || (res && res._tokenResponse && res._tokenResponse.oauthAccessToken) || null;
+          const exp = (res && res._tokenResponse && Number(res._tokenResponse.expiresIn)) ? Number(res._tokenResponse.expiresIn) : 0;
+          if(res && res.user && token){
+            storeGoogleOAuthToken(res.user.uid, token, exp);
+            setCalendarEnabled(res.user.uid, true);
+            loadGoogleOAuthToken(res.user.uid);
+          }
+        } catch(_){ /* ignore */ }
+        toast('Calendar PRO conectado.');
+        render();
+        return;
+      } catch(errPop){
+        const code = (errPop && errPop.code) ? String(errPop.code) : '';
+        if(['auth/popup-blocked','auth/popup-closed-by-user','auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment'].includes(code)){
+          // sigue a redirect
+        } else {
+          throw errPop;
+        }
+      }
+    }
+
     await FB.auth.signInWithRedirect(FB.providerCalendar);
   } catch(err){
     console.error(err);
@@ -621,6 +666,7 @@ async function connectCalendarPro(){
     render();
   }
 }
+
 
 async function signOut(){
   if(!STATE.fbOk || !FB.auth) return;
