@@ -1,5 +1,5 @@
 /* BALANZA GM — SW v1.0.0 Etapa 10 */
-const CACHE_NAME = 'balanzagm-v1.0.0-etapa10-hotfix-authdiag-2';
+const CACHE_NAME = 'balanzagm-v1.0.0-etapa10-hotfix-calendar-consent-1';
 const ASSETS = [
   './',
   './index.html',

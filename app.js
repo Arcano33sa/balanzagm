@@ -25,6 +25,7 @@ const CATALOG_TYPES = [
 const STORAGE = {
   ACTIVE_PERIOD: 'bgm_active_period_v1', // YYYY-MM
   GOOGLE_TOKEN_PREFIX: 'bgm_google_oauth_v1_', // + uid
+  GOOGLE_INTENT: 'bgm_google_oauth_intent_v1', // 'login' | 'calendar'
 };
 
 const INVITE_EXP_HOURS = 24; // recomendado 24h
@@ -97,7 +98,7 @@ analytics: { periodId: null, recs: [], loading: false, computedAtMs: 0 },
 historico: { items: [], loading: false, unsub: null },
 
 // Etapa 10: Google OAuth token (Calendar)
-google: { accessToken: null, expiresAt: 0 },
+google: { accessToken: null, expiresAt: 0, calendarEnabled: false },
 
 // Diagnóstico Auth
 lastAuth: null,
@@ -110,7 +111,8 @@ const FB = {
   app: null,
   auth: null,
   db: null,
-  provider: null,
+  providerBase: null,
+  providerCalendar: null,
 };
 
 function pad2(n){ return String(n).padStart(2,'0'); }
@@ -514,8 +516,11 @@ function initFirebaseIfPossible(){
     }
     FB.auth = firebase.auth();
     FB.db = firebase.firestore();
-    FB.provider = new firebase.auth.GoogleAuthProvider();
-    try{ FB.provider.addScope('https://www.googleapis.com/auth/calendar.events'); } catch(_){ /* ignore */ }
+    // Importante: NO pedir Calendar scope en el login base.
+    // Calendar PRO se conecta aparte para evitar el aviso de “app no verificada” al iniciar sesión.
+    FB.providerBase = new firebase.auth.GoogleAuthProvider();
+    FB.providerCalendar = new firebase.auth.GoogleAuthProvider();
+    try{ FB.providerCalendar.addScope('https://www.googleapis.com/auth/calendar.events'); } catch(_){ /* ignore */ }
 
     STATE.fbOk = true;
     STATE.fbReason = null;
@@ -559,6 +564,10 @@ async function refreshUserContext(){
 
   STATE.familiaId = udata.familiaId || null;
   STATE.role = udata.role || '—';
+  // Calendar PRO: preferencia (token se guarda local, no en Firestore)
+  STATE.google.calendarEnabled = !!udata.calendarProEnabled;
+  // si el usuario aún no tiene el campo, usa localStorage
+  if(!('calendarProEnabled' in udata)) loadCalendarEnabled(STATE.user ? STATE.user.uid : null);
 
   if(STATE.familiaId){
     const fref = FB.db.collection('familias').doc(STATE.familiaId);
@@ -588,11 +597,27 @@ async function signInGoogle(){
   if(!STATE.fbOk || !FB.auth) return;
   try{
     // Redirect es más estable en iPad/PWA.
-    await FB.auth.signInWithRedirect(FB.provider);
+    try{ localStorage.setItem(STORAGE.GOOGLE_INTENT, 'login'); } catch(_){ /* ignore */ }
+    await FB.auth.signInWithRedirect(FB.providerBase);
   } catch(err){
     console.error(err);
     setLastAuthError(err, 'signInWithRedirect');
     toast(`No se pudo iniciar sesión (${STATE.lastAuth && STATE.lastAuth.code ? STATE.lastAuth.code : 'unknown'}).`);
+    render();
+  }
+}
+
+async function connectCalendarPro(){
+  if(!STATE.fbOk || !FB.auth) return;
+  try{
+    // Esto pedirá el scope sensible de Calendar: puede mostrar “Google no ha verificado…”.
+    // Es normal mientras el proyecto esté en modo pruebas o sin verificación.
+    try{ localStorage.setItem(STORAGE.GOOGLE_INTENT, 'calendar'); } catch(_){ /* ignore */ }
+    await FB.auth.signInWithRedirect(FB.providerCalendar);
+  } catch(err){
+    console.error(err);
+    setLastAuthError(err, 'connectCalendarPro');
+    toast(`No se pudo conectar Calendar PRO (${STATE.lastAuth && STATE.lastAuth.code ? STATE.lastAuth.code : 'unknown'}).`);
     render();
   }
 }
@@ -2410,9 +2435,12 @@ function renderResumenView(){
     </div>
   ` : `<div class="notice">Configura <b>CUENTAS</b> en CATÁLOGO para ver saldos.</div>`;
 
+  const calEnabled = !!(STATE.google && STATE.google.calendarEnabled);
   const token = getGoogleAccessToken();
-  const calStatus = token ? 'ACTIVO' : 'INACTIVO';
-  const calHint = token ? 'Calendar PRO listo (fechas tope).' : 'Calendar PRO requiere re-login Google (scope calendar.events).';
+  const calStatus = !calEnabled ? 'NO CONECTADO' : (token ? 'ACTIVO' : 'RE-AUTORIZAR');
+  const calHint = !calEnabled
+    ? 'Conecta Calendar PRO para crear/actualizar eventos SOLO de fechas tope.'
+    : (token ? 'Calendar PRO listo (fechas tope).' : 'Token vencido. Toca “Re-autorizar Calendar PRO”.');
 
   els.view.innerHTML = `
     <div class="resumen-head">
@@ -2456,6 +2484,20 @@ function renderResumenView(){
       <button id="btnCerrar" class="action-btn danger" type="button" ${closeDisabled ? 'aria-disabled="true"' : ''} title="${escapeHtml(cerrarTitle)}">CERRAR PERÍODO</button>
     </div>
 
+    <div class="mini-card" style="margin-top:12px">
+      <div class="mini-label">GOOGLE CALENDAR PRO</div>
+      <div class="mini-value" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div class="status-pill" title="Estado Calendar PRO">${escapeHtml(calStatus)}</div>
+        <div class="hint" style="margin:0">${escapeHtml(calHint)}</div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+        ${(!calEnabled) ? '<button id="btnCalConnect" class="action-btn" type="button">CONECTAR CALENDAR PRO</button>' : ''}
+        ${(calEnabled && !token) ? '<button id="btnCalReconnect" class="action-btn" type="button">RE-AUTORIZAR CALENDAR PRO</button>' : ''}
+        ${(calEnabled && token) ? '<button id="btnCalTest" class="action-btn" type="button">PROBAR CALENDAR</button>' : ''}
+      </div>
+      ${(!calEnabled) ? '<div class="hint" style="margin-top:8px">Nota: al conectar Calendar PRO puede aparecer “Google no ha verificado esta aplicación” mientras no se haga verificación OAuth. Para uso personal, puedes continuar desde “Configuración avanzada”.</div>' : ''}
+    </div>
+
     ${hasBlocking ? `<div class="notice">ALERTAS bloqueantes: <b>${blockingN}</b>. Ve a <b>ALERTAS</b> para resolver.</div>` : ''}
 
     <div class="section-card">
@@ -2492,6 +2534,9 @@ function renderResumenView(){
   const b1 = document.getElementById('btnHistorico');
   const b2 = document.getElementById('btnExcel');
   const b3 = document.getElementById('btnCerrar');
+  const bCal1 = document.getElementById('btnCalConnect');
+  const bCal2 = document.getElementById('btnCalReconnect');
+  const bCalT = document.getElementById('btnCalTest');
   const bxp = document.getElementById('btnBackupExport');
   const bip = document.getElementById('btnBackupImport');
   const fin = document.getElementById('backupFile');
@@ -2522,6 +2567,33 @@ function renderResumenView(){
       return;
     }
     openClosePeriodModal();
+  });
+
+  if(bCal1) bCal1.addEventListener('click', () => {
+    openModal({
+      title: 'Conectar Calendar PRO',
+      bodyHtml: `<p>Se solicitará permiso para crear/actualizar eventos de <b>fechas tope</b> en tu Google Calendar.</p>
+                <p class="hint">Si ves “Google no ha verificado esta aplicación”, entra a <b>Configuración avanzada</b> y continúa (modo uso personal).</p>`,
+      primaryText: 'CONECTAR',
+      onPrimary: () => { closeModal(); connectCalendarPro(); },
+      secondaryText: 'Cancelar',
+      onSecondary: () => closeModal(),
+    });
+  });
+
+  if(bCal2) bCal2.addEventListener('click', () => {
+    openModal({
+      title: 'Re-autorizar Calendar PRO',
+      bodyHtml: `<p>El token de Calendar expiró. Necesitas re-autorizar para seguir sincronizando fechas tope.</p>`,
+      primaryText: 'RE-AUTORIZAR',
+      onPrimary: () => { closeModal(); connectCalendarPro(); },
+      secondaryText: 'Cancelar',
+      onSecondary: () => closeModal(),
+    });
+  });
+
+  if(bCalT) bCalT.addEventListener('click', async () => {
+    await testCalendarPro();
   });
 
   if(bxp) bxp.addEventListener('click', () => exportBackupJson());
@@ -3518,9 +3590,16 @@ els.crestImg.addEventListener('error', () => {
   FB.auth.getRedirectResult().then((res) => {
     try{
       if(res && res.user){
+        let intent = '';
+        try{ intent = String(localStorage.getItem(STORAGE.GOOGLE_INTENT) || ''); } catch(_){ intent = ''; }
+        try{ localStorage.removeItem(STORAGE.GOOGLE_INTENT); } catch(_){ /* ignore */ }
         const token = (res.credential && res.credential.accessToken) || (res._tokenResponse && res._tokenResponse.oauthAccessToken) || null;
         const exp = (res._tokenResponse && Number(res._tokenResponse.expiresIn)) ? Number(res._tokenResponse.expiresIn) : 0;
-        if(token) storeGoogleOAuthToken(res.user.uid, token, exp);
+        // Solo guardamos token cuando el intent fue conectar Calendar PRO.
+        if(intent === 'calendar' && token){
+          storeGoogleOAuthToken(res.user.uid, token, exp);
+          setCalendarEnabled(res.user.uid, true);
+        }
       }
     } catch(_){ /* ignore */ }
   }).catch(()=>{});
@@ -3532,13 +3611,18 @@ els.crestImg.addEventListener('error', () => {
 
     try{
       if(user){
-        loadGoogleOAuthToken(user.uid);
+        loadCalendarEnabled(user.uid);
         await ensureUserDoc(user);
         await refreshUserContext();
+        if(STATE.google.calendarEnabled) loadGoogleOAuthToken(user.uid);
+        else { STATE.google.accessToken = null; STATE.google.expiresAt = 0; }
       } else {
         STATE.familiaId = null;
         STATE.familia = null;
         STATE.role = '—';
+        STATE.google.accessToken = null;
+        STATE.google.expiresAt = 0;
+        STATE.google.calendarEnabled = false;
       }
     } catch(err){
       console.error(err);
@@ -3588,6 +3672,31 @@ function tokenStorageKey(uid){
   return `bgm_google_token_${String(uid||'')}`;
 }
 
+function calendarEnabledKey(uid){
+  return `bgm_calendar_enabled_${String(uid||'')}`;
+}
+
+function setCalendarEnabled(uid, enabled){
+  const on = !!enabled;
+  STATE.google.calendarEnabled = on;
+  try{ if(uid) localStorage.setItem(calendarEnabledKey(uid), on ? '1' : '0'); }catch(_){ /* ignore */ }
+  // Persistir preferencia en perfil (no el token)
+  try{
+    if(STATE.fbOk && FB.db && uid){
+      FB.db.collection('users').doc(uid).set({ calendarProEnabled: on, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(()=>{});
+    }
+  } catch(_){ /* ignore */ }
+}
+
+function loadCalendarEnabled(uid){
+  if(!uid) return;
+  try{
+    const v = localStorage.getItem(calendarEnabledKey(uid));
+    if(v === '1') STATE.google.calendarEnabled = true;
+    if(v === '0') STATE.google.calendarEnabled = false;
+  } catch(_){ /* ignore */ }
+}
+
 function storeGoogleOAuthToken(uid, accessToken, expiresInSeconds){
   if(!uid || !accessToken) return;
   const now = Date.now();
@@ -3597,6 +3706,7 @@ function storeGoogleOAuthToken(uid, accessToken, expiresInSeconds){
   try{ localStorage.setItem(tokenStorageKey(uid), JSON.stringify(payload)); }catch(_){ /* ignore */ }
   STATE.google.accessToken = payload.accessToken;
   STATE.google.expiresAt = payload.expiresAt;
+  STATE.google.calendarEnabled = true;
 }
 
 function loadGoogleOAuthToken(uid){
@@ -3632,6 +3742,7 @@ function getGoogleAccessToken(){
 }
 
 async function calendarApiFetch(path, { method='GET', body=null }={}){
+  if(!(STATE.google && STATE.google.calendarEnabled)) throw new Error('CAL_DISABLED');
   const token = getGoogleAccessToken();
   if(!token) throw new Error('NO_TOKEN');
   const url = `https://www.googleapis.com/calendar/v3/${path}`;
@@ -3651,6 +3762,30 @@ async function calendarApiFetch(path, { method='GET', body=null }={}){
     throw new Error(`CAL_${res.status}:${t.slice(0,120)}`);
   }
   return res.json();
+}
+
+async function testCalendarPro(){
+  try{
+    const out = await calendarApiFetch('users/me/calendarList?maxResults=1');
+    const ok = out && (Array.isArray(out.items) ? out.items.length : 0);
+    toast(ok ? 'Calendar PRO OK.' : 'Calendar PRO OK.');
+  } catch(err){
+    const msg = (err && err.message) ? String(err.message) : String(err||'');
+    if(msg === 'CAL_DISABLED'){
+      toast('Calendar PRO: no conectado.');
+      return;
+    }
+    if(msg === 'NO_TOKEN'){
+      toast('Calendar PRO: token faltante o vencido. Re-autoriza.');
+      return;
+    }
+    if(msg.includes('CAL_401') || msg.includes('CAL_403')){
+      toast('Calendar PRO: permiso insuficiente. Re-autoriza.');
+      return;
+    }
+    toast('Calendar PRO: error.');
+    console.warn('Calendar test error:', err);
+  }
 }
 
 function calendarEventBodyFromExpense(exp){
@@ -3687,6 +3822,7 @@ function calendarEventBodyFromExpense(exp){
 async function calendarSyncExpenseAfterSave({ type, periodId, docId, after, before }){
   // Solo gastos con fecha tope
   try{
+    if(!(STATE.google && STATE.google.calendarEnabled)) return;
     const token = getGoogleAccessToken();
     if(!token) return;
     if(!STATE.fbOk || !FB.db || !STATE.familiaId || !periodId || !docId) return;
@@ -3719,6 +3855,7 @@ async function calendarSyncExpenseAfterSave({ type, periodId, docId, after, befo
 
 async function calendarMarkExpensePaid({ ref, fechaPagoStr }){
   try{
+    if(!(STATE.google && STATE.google.calendarEnabled)) return;
     const token = getGoogleAccessToken();
     if(!token) return;
     if(!ref) return;
