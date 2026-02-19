@@ -123,6 +123,15 @@ body{
   display:none;
 }
 
+/* Tablet/desktop: keep HERO as a compact banner (avoid 16:9 dominating height on iPad) */
+@media (min-width: 768px){
+  .hero-frame{
+    aspect-ratio: auto;
+    height: clamp(160px, 22vh, 240px);
+  }
+}
+
+
 .hero-fallback{
   position:absolute;
   inset:0;

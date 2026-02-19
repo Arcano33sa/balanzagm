@@ -1,5 +1,5 @@
 /* BALANZA GM — SW v1.0.0 Etapa 10 */
-const CACHE_NAME = 'balanzagm-v1.0.0-etapa10-hotfix-bootfix-1';
+const CACHE_NAME = 'balanzagm-v1.0.0-hero-fix-sw-20260218-01';
 const ASSETS = [
   './',
   './index.html',
